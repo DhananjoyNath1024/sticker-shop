@@ -1,0 +1,34 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sticker shop</title><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet"><link rel="stylesheet" href="style.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script><script src="app.js"></script></head><body>
+<main class="wrap"><h1>Checkout</h1><div id="empty"></div>
+<div class="co" id="co" hidden><form id="f" class="box"><h3>Delivery details</h3><div class="two">
+<label>Full name<input name="name" required autocomplete="name"></label><label>Phone<input name="phone" required pattern="[0-9]{10}" maxlength="10" inputmode="numeric" placeholder="10-digit mobile" autocomplete="tel"></label>
+<label class="full">Email (optional)<input name="email" type="email" autocomplete="email"></label>
+<label class="full">Address<textarea name="address" rows="2" required placeholder="House no, street, landmark" autocomplete="street-address"></textarea></label>
+<label>City<input name="city" required></label><label>State<input name="state" required></label>
+<label>Pincode<input name="pincode" required pattern="[0-9]{6}" maxlength="6" inputmode="numeric"></label>
+<label>Payment<select name="payment"><option>Cash on Delivery</option><option>UPI / bank transfer</option></select></label>
+<label class="full">Order note (optional)<input name="notes"></label></div>
+<p><small id="pn"></small></p><button class="btn m" id="pl">Place order</button></form>
+<aside class="box" id="sum"></aside></div>
+<div class="box narrow" id="ok" hidden></div></main>
+<script>
+let P=[];
+async function draw(){
+ const c=cart.get(),ids=Object.keys(c);
+ P=ids.length?((await sb.from('products').select('*').in('id',ids)).data||[]).filter(p=>p.active&&p.stock>0):[];
+ const k={};P.forEach(p=>k[p.id]=Math.min(c[p.id],p.stock));cart.set(k);
+ const sub=P.reduce((a,p)=>a+p.price*k[p.id],0),fee=!P.length||sub>=+S.free_delivery_above?0:+S.delivery_fee;
+ $('#co').hidden=!P.length;$('#empty').innerHTML=P.length?'':'<p>Your cart is empty. <a href="index.html">Pick some stickers</a></p>';
+ $('#sum').innerHTML=`<h3>Your order</h3>${P.map(p=>`<div class="ci"><img src="${esc(p.images?.[0]||'')}" alt=""><div>${esc(p.name)}<br><small>${money(p.price)}</small></div><div class="qt"><button data-i="${p.id}" data-d="-1" aria-label="Less">−</button>${k[p.id]}<button data-i="${p.id}" data-d="1" aria-label="More">+</button></div><b>${money(p.price*k[p.id])}</b></div>`).join('')}
+ <div class="row"><span>Subtotal</span><span>${money(sub)}</span></div><div class="row"><span>Delivery</span><span>${fee?money(fee):'FREE'}</span></div>${fee?`<small>Free delivery on orders above ${money(S.free_delivery_above)}</small>`:''}
+ <div class="row t"><span>Total</span><span>${money(sub+fee)}</span></div>`;
+}
+(async()=>{await init();$('#pn').textContent=S.payment_note||'';await draw();
+$('#sum').onclick=e=>{const b=e.target.closest('[data-i]');if(!b)return;const c=cart.get(),p=P.find(x=>x.id==b.dataset.i),n=(c[p.id]||0)+ +b.dataset.d;if(n<1)delete c[p.id];else c[p.id]=Math.min(n,p.stock);cart.set(c);draw()};
+$('#f').onsubmit=async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target)),btn=$('#pl');btn.disabled=true;
+ const{data,error}=await sb.rpc('place_order',{p_name:f.name,p_phone:f.phone,p_email:f.email,p_address:f.address,p_city:f.city,p_state:f.state,p_pincode:f.pincode,p_notes:f.notes,p_payment:f.payment,p_items:Object.entries(cart.get()).map(([id,qty])=>({id,qty}))});
+ if(error){btn.disabled=false;alert(error.message);draw();return}
+ cart.set({});$('#co').hidden=true;$('#ok').hidden=false;
+ $('#ok').innerHTML=`<h2>Order placed!</h2><p>Order <b>#${data.order_no}</b> · Total ${money(data.total)} · ${esc(f.payment)}</p><p>We will call ${esc(f.phone)} to confirm your order.</p><a class="btn" href="index.html">Keep shopping</a>`};
+})();
+</script></body></html>

@@ -1,0 +1,17 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sticker shop</title><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet"><link rel="stylesheet" href="style.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script><script src="app.js"></script></head><body>
+<section class="hero"><div class="wrap"><div><h1 id="ht"></h1><p id="hs"></p><a class="btn m" href="#shop" id="hc"></a></div><div class="col" id="col"></div></div></section>
+<main class="wrap" id="shop"><h2>Shop stickers</h2><div class="chips" id="chips"></div><div class="grid" id="grid">Loading…</div>
+<h2 style="margin-top:44px">What customers say</h2><div class="g" id="rev"></div></main>
+<script>
+(async()=>{await init();
+$('#ht').textContent=S.hero_title||'';$('#hs').textContent=S.hero_subtitle||'';$('#hc').textContent=S.hero_button||'Shop now';
+const P=(await sb.from('products').select('*').eq('active',true).order('created_at',{ascending:false})).data||[];
+$('#col').innerHTML=P.slice(0,3).map(p=>`<img class="stk" src="${esc(p.images?.[0]||'')}" alt="">`).join('');
+const cats=['All',...new Set(P.map(p=>p.category).filter(Boolean))];
+const show=c=>{$('#grid').innerHTML=P.filter(p=>c=='All'||p.category==c).map(card).join('')||'<p>No stickers yet.</p>';$$('.chip').forEach(b=>b.classList.toggle('on',b.textContent==c))};
+$('#chips').innerHTML=cats.length>2?cats.map(c=>`<button class="chip">${esc(c)}</button>`).join(''):'';
+$('#chips').onclick=e=>e.target.matches('button')&&show(e.target.textContent);show('All');
+const R=(await sb.from('reviews').select('*').eq('approved',true).order('created_at',{ascending:false}).limit(6)).data||[];
+$('#rev').innerHTML=R.map(r=>`<div class="rv"><span class="star">${stars(r.rating)}</span><p>${esc(r.comment)}</p><b>${esc(r.name)}</b></div>`).join('')||'<p>Reviews will show up here.</p>';
+})();
+</script></body></html>

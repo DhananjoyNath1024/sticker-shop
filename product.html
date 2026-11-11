@@ -1,0 +1,31 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sticker shop</title><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet"><link rel="stylesheet" href="style.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script><script src="app.js"></script></head><body>
+<main class="wrap" id="m">Loading…</main>
+<div id="lb"><button id="lx" aria-label="Close">✕</button><button id="lp" aria-label="Previous">‹</button><img id="li" alt=""><button id="ln" aria-label="Next">›</button></div>
+<script>
+(async()=>{await init();
+const id=new URLSearchParams(location.search).get('id'),m=$('#m');
+const{data:p}=await sb.from('products').select('*').eq('id',id).eq('active',true).maybeSingle();
+if(!p){m.innerHTML='<p>Sticker not found. <a href="index.html">Back to shop</a></p>';return}
+document.title=p.name;const im=p.images||[];let i=0;
+const R=(await sb.from('reviews').select('*').eq('product_id',p.id).eq('approved',true).order('created_at',{ascending:false})).data||[];
+const avg=R.length?R.reduce((a,r)=>a+r.rating,0)/R.length:0,dis=p.stock<1?'disabled':'';
+m.innerHTML=`<div class="pd"><div><img id="big" class="stk" src="${esc(im[0]||'')}" alt="${esc(p.name)}" title="Click to enlarge"><div class="th">${im.map((u,k)=>`<img data-k="${k}" src="${esc(u)}" alt="">`).join('')}</div></div>
+<div><h1>${esc(p.name)}</h1><p class="pr">${price(p)} ${off(p)?`<span class="tag">${off(p)}% off</span>`:''}</p>
+${R.length?`<p><span class="star">${stars(Math.round(avg))}</span> ${avg.toFixed(1)} (${R.length} reviews)</p>`:''}<p>${tag(p)}</p><p class="d">${esc(p.description)}</p>
+<label>Quantity<input id="q" type="number" min="1" max="${p.stock}" value="1" style="width:90px"></label>
+<p><button class="btn" id="add" ${dis}>Add to cart</button> <button class="btn m" id="buy" ${dis}>Buy now</button></p></div></div>
+<h2>Reviews</h2><div class="g">${R.map(r=>`<div class="rv"><span class="star">${stars(r.rating)}</span><p>${esc(r.comment)}</p><b>${esc(r.name)}</b></div>`).join('')||'<p>No reviews yet. Be the first!</p>'}</div>
+<h3 style="margin-top:28px">Write a review</h3><form id="rf" class="box narrow"><label>Your name<input name="name" required></label><label>Rating<select name="rating">${[5,4,3,2,1].map(n=>`<option value="${n}">${stars(n)}</option>`).join('')}</select></label><label>Review<textarea name="comment" rows="3" required></textarea></label><p><button class="btn">Send review</button></p></form>`;
+const qty=()=>Math.max(1,Math.min(p.stock,+$('#q').value||1));
+$('#add').onclick=()=>{cart.add(p.id,qty());toast('Added to cart')};
+$('#buy').onclick=()=>{cart.add(p.id,qty());location='checkout.html'};
+$('#rf').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const{error}=await sb.from('reviews').insert({product_id:p.id,name:f.get('name'),rating:+f.get('rating'),comment:f.get('comment')});if(error)return alert(error.message);e.target.reset();toast('Thanks! Your review shows after approval.')};
+// lightbox
+const lb=$('#lb'),go=k=>{i=(k+im.length)%im.length;$('#li').src=im[i]},close=()=>lb.classList.remove('on');
+$('#big').onclick=()=>{if(im.length){go(i);lb.classList.add('on')}};
+$('.th').onclick=e=>{if(e.target.dataset.k){i=+e.target.dataset.k;$('#big').src=im[i]}};
+$('#lp').onclick=()=>go(i-1);$('#ln').onclick=()=>go(i+1);
+lb.onclick=e=>{if(e.target==lb||e.target.id=='lx')close()};
+onkeydown=e=>{if(!lb.classList.contains('on'))return;if(e.key=='Escape')close();if(e.key=='ArrowLeft')go(i-1);if(e.key=='ArrowRight')go(i+1)};
+})();
+</script></body></html>

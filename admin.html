@@ -1,0 +1,75 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin</title><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet"><link rel="stylesheet" href="style.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script><script src="app.js"></script></head><body>
+<div id="login" class="wrap narrow" style="margin-top:60px"><form id="lf" class="box"><h2>Admin login</h2><label>Email<input name="e" type="email" required></label><label>Password<input name="p" type="password" required></label><p><button class="btn">Log in</button></p></form></div>
+<div id="app" hidden><header class="nav"><div class="wrap"><b>Admin</b><div class="tabs" id="tabs"></div><span><a class="btn s w" href="index.html" target="_blank">View site</a> <button class="btn s w" id="out">Log out</button></span></div></header><main class="wrap" id="v" style="margin-top:20px"></main></div>
+<script>
+const TABS={orders:'Orders',create:'Create order',products:'Stickers',reviews:'Reviews',settings:'Settings'},R={},ST=['pending','confirmed','shipped','delivered','cancelled'];
+let tab='orders',ofl='';
+const q=async x=>{const{data,error}=await x;if(error){alert(error.message);return[]}return data||[]};
+const fld=(n,l,v='',t='text',x='')=>`<label>${l}<input name="${n}" type="${t}" value="${esc(v)}" ${x}></label>`;
+const opts=(a,s)=>a.map(o=>`<option ${o==s?'selected':''}>${o}</option>`).join('');
+const go=async t=>{tab=t;$$('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t==t));$('#v').innerHTML='Loading…';await R[t]()};
+
+R.orders=async()=>{
+ const O=await q(sb.from('orders').select('*').order('created_at',{ascending:false}).limit(300)),L=O.filter(o=>!ofl||o.status==ofl);
+ const rev=O.filter(o=>o.status!='cancelled').reduce((a,o)=>a+ +o.total,0);
+ $('#v').innerHTML=`<div class="row"><h2>Orders (${L.length})</h2><select id="of" style="width:auto"><option value="">All statuses</option>${opts(ST,ofl)}</select></div>
+ <p>Pending: <b>${O.filter(o=>o.status=='pending').length}</b> · Revenue (excl. cancelled): <b>${money(rev)}</b></p>
+ <div class="scroll"><table><tr><th>#</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr>${L.map(o=>`<tr><td>${o.order_no}<br><small>${new Date(o.created_at).toLocaleString()}<br>${esc(o.source)}</small></td>
+ <td><b>${esc(o.name)}</b><br><a href="tel:${esc(o.phone)}">${esc(o.phone)}</a> ${esc(o.email||'')}<br><small>${esc([o.address,o.city,o.state,o.pincode].join(', '))}${o.notes?'<br>Note: '+esc(o.notes):''}</small></td>
+ <td>${(o.items||[]).map(i=>`${esc(i.name)} ×${i.qty}`).join('<br>')}</td><td>${money(o.total)}<br><small>incl. ${money(o.delivery_fee)} delivery<br>${esc(o.payment)}</small></td>
+ <td><select data-st="${o.id}">${opts(ST,o.status)}</select></td><td><button class="btn s w" data-del="${o.id}">Delete</button></td></tr>`).join('')}</table></div>`;
+ $('#of').onchange=e=>{ofl=e.target.value;R.orders()};
+ $$('[data-st]').forEach(s=>s.onchange=async()=>{await q(sb.from('orders').update({status:s.value}).eq('id',s.dataset.st));toast('Status updated')});
+ $$('[data-del]').forEach(b=>b.onclick=async()=>{if(confirm('Delete this order?')){await q(sb.from('orders').delete().eq('id',b.dataset.del));R.orders()}});
+};
+
+R.create=async()=>{
+ const P=await q(sb.from('products').select('*').order('name')),po='<option value="">Choose sticker</option>'+P.map(p=>`<option value="${p.id}">${esc(p.name)} · ${money(p.price)} · ${p.stock} in stock</option>`).join('');
+ const row=()=>`<div class="ir"><select name="pid">${po}</select><input name="qty" type="number" min="1" value="1"><button type="button" class="btn s w" onclick="this.parentNode.remove()">✕</button></div>`;
+ $('#v').innerHTML=`<h2>Create order</h2><form id="nf" class="box"><div class="two">${fld('name','Name','','text','required')}${fld('phone','Phone','','text','required')}${fld('email','Email','','email')}${fld('pincode','Pincode')}<label class="full">Address<textarea name="address" rows="2" required></textarea></label>${fld('city','City')}${fld('state','State')}${fld('notes','Note')}
+ <label>Delivery fee override (blank = automatic)<input name="fee" type="number" min="0"></label><label>Payment<select name="payment">${opts(['Cash on Delivery','UPI / bank transfer','Paid','Cash at shop'])}</select></label><label>Status<select name="status">${opts(ST)}</select></label><label>Source<select name="source">${opts(['admin','instagram','whatsapp','walk-in','other'])}</select></label></div>
+ <label>Stickers</label><div id="its">${row()}</div><p><button type="button" class="btn s w" id="addr">+ Add another sticker</button></p><button class="btn m">Create order</button></form>`;
+ $('#addr').onclick=()=>$('#its').insertAdjacentHTML('beforeend',row());
+ $('#nf').onsubmit=async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target)),items=$$('.ir').map(r=>({id:$('[name=pid]',r).value,qty:+$('[name=qty]',r).value})).filter(i=>i.id);
+  if(!items.length)return alert('Add at least one sticker');
+  const{data,error}=await sb.rpc('place_order',{p_name:f.name,p_phone:f.phone,p_email:f.email,p_address:f.address,p_city:f.city,p_state:f.state,p_pincode:f.pincode,p_notes:f.notes,p_payment:f.payment,p_items:items,p_fee:f.fee===''?null:+f.fee,p_status:f.status,p_source:f.source});
+  if(error)return alert(error.message);toast('Order #'+data.order_no+' created');go('orders')};
+};
+
+R.products=async()=>{
+ const P=await q(sb.from('products').select('*').order('created_at',{ascending:false}));
+ $('#v').innerHTML=`<div class="row"><h2>Stickers (${P.length})</h2><button class="btn m s" id="np">+ New sticker</button></div><div id="pf"></div>
+ <div class="scroll"><table><tr><th></th><th>Name</th><th>Price</th><th>Stock</th><th>Live</th><th></th></tr>${P.map(p=>`<tr><td><img class="th0" src="${esc(p.images?.[0]||'')}" alt=""></td><td>${esc(p.name)}<br><small>${esc(p.category||'')} ${p.badge?'· '+esc(p.badge):''}</small></td><td>${money(p.price)}</td><td><input class="sm" type="number" min="0" value="${p.stock}" data-stk="${p.id}"></td><td>${p.active?'Yes':'Hidden'}</td><td><button class="btn s w" data-ed="${p.id}">Edit</button> <button class="btn s w" data-dp="${p.id}">Delete</button></td></tr>`).join('')}</table></div>`;
+ const form=(p={})=>{$('#pf').innerHTML=`<form id="f2" class="box" style="margin-bottom:20px"><div class="two">${fld('name','Name',p.name,'text','required')}${fld('category','Category',p.category)}${fld('price','Price',p.price,'number','required min=0 step=any')}${fld('compare_price','Original price (strikethrough)',p.compare_price,'number','min=0 step=any')}${fld('stock','Stock',p.stock??0,'number','required min=0')}${fld('badge','Badge text (e.g. Bestseller)',p.badge)}
+  <label class="full">Description<textarea name="description" rows="3">${esc(p.description)}</textarea></label>
+  <label class="full">Image URLs (one per line, first is the cover)<textarea name="images" rows="3">${esc((p.images||[]).join('\n'))}</textarea></label><label class="full">Or upload images<input type="file" id="up" accept="image/*" multiple></label></div>
+  <label><input type="checkbox" name="active" style="width:auto" ${p.active===false?'':'checked'}> Visible in shop</label><p><button class="btn m">Save sticker</button> <button type="button" class="btn w" onclick="R.products()">Cancel</button></p></form>`;
+  $('#up').onchange=async e=>{const t=$('[name=images]');for(const f of e.target.files){const n=Date.now()+'-'+f.name.replace(/[^\w.]/g,'_'),{error}=await sb.storage.from('stickers').upload(n,f);if(error)return alert(error.message);t.value+=(t.value?'\n':'')+sb.storage.from('stickers').getPublicUrl(n).data.publicUrl}toast('Uploaded')};
+  $('#f2').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),o={name:f.get('name'),category:f.get('category')||null,description:f.get('description'),price:+f.get('price'),compare_price:f.get('compare_price')?+f.get('compare_price'):null,stock:+f.get('stock'),badge:f.get('badge')||null,images:f.get('images').split('\n').map(s=>s.trim()).filter(Boolean),active:!!f.get('active')};
+   if(p.id)o.id=p.id;await q(sb.from('products').upsert(o));toast('Saved');R.products()};$('#pf').scrollIntoView()};
+ $('#np').onclick=()=>form();
+ $$('[data-ed]').forEach(b=>b.onclick=()=>form(P.find(p=>p.id==b.dataset.ed)));
+ $$('[data-stk]').forEach(i=>i.onchange=async()=>{await q(sb.from('products').update({stock:+i.value}).eq('id',i.dataset.stk));toast('Stock updated')});
+ $$('[data-dp]').forEach(b=>b.onclick=async()=>{if(confirm('Delete this sticker and its reviews?')){await q(sb.from('products').delete().eq('id',b.dataset.dp));R.products()}});
+};
+
+R.reviews=async()=>{
+ const V=await q(sb.from('reviews').select('*,products(name)').order('created_at',{ascending:false}));
+ $('#v').innerHTML=`<h2>Reviews (${V.length})</h2><div class="scroll"><table>${V.map(r=>`<tr><td>${esc(r.products?.name||'')}</td><td><span class="star">${stars(r.rating)}</span><br>${esc(r.comment)}<br><small>${esc(r.name)}</small></td><td>${r.approved?'Live':'Pending'}</td><td><button class="btn s w" data-ap="${r.id}" data-v="${!r.approved}">${r.approved?'Hide':'Approve'}</button> <button class="btn s w" data-rd="${r.id}">Delete</button></td></tr>`).join('')}</table></div>`;
+ $$('[data-ap]').forEach(b=>b.onclick=async()=>{await q(sb.from('reviews').update({approved:b.dataset.v=='true'}).eq('id',b.dataset.ap));R.reviews()});
+ $$('[data-rd]').forEach(b=>b.onclick=async()=>{if(confirm('Delete review?')){await q(sb.from('reviews').delete().eq('id',b.dataset.rd));R.reviews()}});
+};
+
+R.settings=async()=>{
+ const rows=await q(sb.from('settings').select('*').order('key'));
+ $('#v').innerHTML=`<h2>Settings</h2><p>Low-stock text: use <b>{n}</b> for the remaining count (e.g. "Only {n} left!"). It shows when stock is at or below the threshold.</p><form id="sf" class="box narrow">${rows.map(r=>fld(r.key,r.key.replace(/_/g,' '),r.value)).join('')}<p><button class="btn m">Save settings</button></p></form>`;
+ $('#sf').onsubmit=async e=>{e.preventDefault();await q(sb.from('settings').upsert([...new FormData(e.target)].map(([key,value])=>({key,value}))));await loadS();toast('Settings saved')};
+};
+
+async function boot(){const{data:{session}}=await sb.auth.getSession();$('#login').hidden=!!session;$('#app').hidden=!session;if(session){await loadS();go(tab)}}
+$('#tabs').innerHTML=Object.entries(TABS).map(([k,l])=>`<button data-t="${k}">${l}</button>`).join('');
+$('#tabs').onclick=e=>e.target.dataset.t&&go(e.target.dataset.t);
+$('#lf').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),{error}=await sb.auth.signInWithPassword({email:f.get('e'),password:f.get('p')});error?alert(error.message):boot()};
+$('#out').onclick=async()=>{await sb.auth.signOut();boot()};
+boot();
+</script></body></html>
